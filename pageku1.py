@@ -277,7 +277,7 @@ class CreatePage:
         }
         resking = self.r.post(self.url, headers=self.head1, data=params)
         restext = resking.text
-
+        print(restext)
         # Login langsung berhasil tanpa 2FA
         direct_token = extract_access_token(restext)
         if direct_token and "two_fac_redirect" not in restext and "two_step_verification" not in restext and "redirection_to_two_fac" not in restext:
