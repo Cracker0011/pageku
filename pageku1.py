@@ -15,9 +15,52 @@ from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 
 COOLDOWN_SECONDS = 7 * 60  # 7 menit
+TOKEN_FILE = "saved_tokens.json"
+
+DEVICE_POOL = [
+    {"model": "SM-G960N",  "brand": "samsung", "board": "samsung", "av": "555.0.0.49.59", "bv": "926293029", "sv": "9",  "arch": "x86_64:arm64-v8a",    "density": "1.5", "w": "1280", "h": "720"},
+    {"model": "SM-A515F",  "brand": "samsung", "board": "samsung", "av": "551.1.0.37.93", "bv": "913872111", "sv": "11", "arch": "arm64-v8a:armeabi-v7a", "density": "2.0", "w": "1080", "h": "2400"},
+    {"model": "Redmi Note 8", "brand": "Xiaomi", "board": "Xiaomi", "av": "548.0.0.26.72", "bv": "902761234", "sv": "10", "arch": "arm64-v8a:armeabi-v7a", "density": "2.75", "w": "1080", "h": "2340"},
+    {"model": "M2010J19CG", "brand": "Xiaomi", "board": "POCO",   "av": "553.0.0.40.108","bv": "919234567", "sv": "10", "arch": "arm64-v8a:armeabi-v7a", "density": "2.4", "w": "1080", "h": "2400"},
+    {"model": "CPH2185",   "brand": "OPPO",   "board": "OPPO",    "av": "549.0.0.28.83", "bv": "904312876", "sv": "11", "arch": "arm64-v8a:armeabi-v7a", "density": "2.0", "w": "1080", "h": "2400"},
+    {"model": "V2055",     "brand": "vivo",   "board": "vivo",    "av": "546.0.0.20.61", "bv": "898234111", "sv": "11", "arch": "arm64-v8a:armeabi-v7a", "density": "2.0", "w": "1080", "h": "2340"},
+]
 
 def clear():
     os.system("clear" if os.name == "posix" else "cls")	
+    
+def random_ua():
+    d = random.choice(DEVICE_POOL)
+    return (
+        f"[FBAN/FB4A;FBAV/{d['av']};FBBV/{d['bv']};"
+        f"FBDM/{{density={d['density']},width={d['w']},height={d['h']}}};"
+        f"FBLC/id_ID;FBRV/0;FBCR/PSN;FBMF/{d['brand']};FBBD/{d['board']};"
+        f"FBPN/com.facebook.katana;FBDV/{d['model']};FBSV/{d['sv']};"
+        f"FBOP/1;FBCA/{d['arch']};]"
+    )
+
+def save_token(uid, token):
+    try:
+        try:
+            with open(TOKEN_FILE, "r") as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+        data[str(uid)] = token
+        with open(TOKEN_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
+
+def load_token(uid):
+    try:
+        with open(TOKEN_FILE, "r") as f:
+            data = json.load(f)
+        return data.get(str(uid))
+    except Exception:
+        return None
+
+
 def ENCPASS_KATANA(pw):
     t = int(time.time())
     did = str(uuid.uuid4())
@@ -59,76 +102,20 @@ def extract_new_profile_id(text, original_uid):
 
 
 class CreatePage:
-    def __init__(self, uid, pw, email, totp_seed):
+    def __init__(self, uid, pw, totp_seed):
         self.uid = uid
         self.pw = pw
-        self.email = email if email else uid
         self.totp_seed = totp_seed
-        self.r = requests.Session()
-        self.current_timestamp = int(time.time())
-        self.device_id = str(uuid.uuid4())
-        self.timer = str(round(time.time()))
-        self.url = "https://b-graph.facebook.com/graphql"
-        self.android_device = "android-%s" % hashlib.md5(str(time.time()).encode()).hexdigest()[:16]
-        self.encpass = ENCPASS_KATANA(self.pw)
         self.accesstoken = ""
         self.context = ""
         self.otpcode = ""
         self.name = random_name()
-        self.head = {
-            "X-Fb-Request-Analytics-Tags": '{"network_tags":{"product":"350685531728","request_category":"graphql","purpose":"fetch","retry_attempt":"0"},"application_tags":"graphservice"}',
-            "X-Fb-Rmd": "state=URL_ELIGIBLE",
-            "Priority": "u=0",
-            "X-Fb-Device-Group": "2101",
-            "X-Fb-Integrity-Machine-Id": "NM4Bav6UK5w5YiZFtO22bofN",
-            "X-Zero-Eh": hashlib.md5(f"{self.device_id}{self.current_timestamp}".encode()).hexdigest(),
-            "User-Agent": "[FBAN/FB4A;FBAV/555.0.0.49.59;FBBV/926293029;FBDM/{density=1.5,width=1280,height=720};FBLC/id_ID;FBRV/0;FBCR/PSN;FBMF/samsung;FBBD/samsung;FBPN/com.facebook.katana;FBDV/SM-G960N;FBSV/9;FBOP/1;FBCA/x86_64:arm64-v8a;]",
-            "X-Graphql-Request-Purpose": "fetch",
-            "X-Zero-F-Device-Id": str(uuid.uuid4()),
-            "X-Tigon-Is-Retry": "False",
-            "X-Zero-State": "unknown",
-            "X-Graphql-Client-Library": "graphservice",
-            "X-Fb-Sim-Hni": "51000",
-            "Content-Type": "application/x-www-form-urlencoded",
-            "X-Fb-Net-Hni": "51000",
-            "Authorization": "OAuth 350685531728|62f8ce9f74b12f84c123cc23437a4a32",
-            "X-Meta-Zca": "empty_token",
-            "App-Scope-Id-Header": str(uuid.uuid4()),
-            "X-Fb-Connection-Type": "WIFI",
-            "X-Meta-Usdid": f"{str(uuid.uuid4())}.{self.current_timestamp}.MEUCIQC1Q5Wpq0xh36yu13b1rex-fRcvH0jOSTsGJtvTqbmqqgIgO58pKRH4tCoM5xUep_-HnGZA9Vhu5dadwQhS7zHLS1A",
-            "X-Fb-Http-Engine": "Tigon/Liger",
-            "X-Fb-Client-Ip": "True",
-            "X-Fb-Server-Cluster": "True",
-            "X-Fb-Conn-Uuid-Client": "ubrIZdAUGJfiMxn1ClPPXQ==",
-        }
-        self.head3 = {
-            "X-Fb-Request-Analytics-Tags": '{"network_tags":{"product":"350685531728","request_category":"graphql","purpose":"fetch","retry_attempt":"0"},"application_tags":"graphservice"}',
-            "X-Fb-Rmd": "state=URL_ELIGIBLE",
-            "Priority": "u=0",
-            "User-Agent": "[FBAN/FB4A;FBAV/555.0.0.49.59;FBBV/926293029;FBDM/{density=1.5,width=1280,height=720};FBLC/id_ID;FBRV/0;FBCR/PSN;FBMF/samsung;FBBD/samsung;FBPN/com.facebook.katana;FBDV/SM-G960N;FBSV/9;FBOP/1;FBCA/x86_64:arm64-v8a;]",
-            "X-Fb-Friendly-Name": "FbBloksAppRootQuery-com.bloks.www.unified.profile.creation",
-            "X-Zero-F-Device-Id": str(uuid.uuid4()),
-            "X-Fb-Integrity-Machine-Id": "NM4Bav6UK5w5YiZFtO22bofN",
-            "X-Graphql-Request-Purpose": "fetch",
-            "X-Fb-Device-Group": "2101",
-            "X-Tigon-Is-Retry": "False",
-            "X-Graphql-Client-Library": "graphservice",
-            "Content-Type": "application/x-www-form-urlencoded",
-            "X-Zero-Eh": hashlib.md5(f"{self.device_id}{self.current_timestamp}".encode()).hexdigest(),
-            "X-Fb-Net-Hni": "51000",
-            "X-Fb-Sim-Hni": "51000",
-            "Authorization": f"OAuth {self.accesstoken}",
-            "App-Scope-Id-Header": str(uuid.uuid4()),
-            "X-Fb-Connection-Type": "WIFI",
-            "X-Meta-Zca": "empty_token",
-            "X-Meta-Usdid": f"{str(uuid.uuid4())}.{self.current_timestamp}.MEUCIQC1Q5Wpq0xh36yu13b1rex-fRcvH0jOSTsGJtvTqbmqqgIgO58pKRH4tCoM5xUep_-HnGZA9Vhu5dadwQhS7zHLS1A",
-            "X-Fb-Http-Engine": "Tigon/Liger",
-            "X-Fb-Client-Ip": "True",
-            "X-Fb-Server-Cluster": "True",
-            "X-Fb-Conn-Uuid-Client": "Ot/2iNbqk2kiyMj1kGgpKw==",
-        }
-        self.head1 = self.head.copy()
-        self.head2 = self.head3.copy()
+        self.url = "https://b-graph.facebook.com/graphql"
+        self.head = {}
+        self.head3 = {}
+        self.head1 = {}
+        self.head2 = {}
+        self._build_fresh_headers()
 
     def get_2fa_token(self):
         try:
@@ -144,29 +131,76 @@ class CreatePage:
         self.head2["Authorization"] = f"OAuth {self.accesstoken}"
         self.head3["Authorization"] = f"OAuth {self.accesstoken}"
 
-    def _reset_session(self):
-        """Reset session dan regenerate semua nilai random/timestamp agar fresh tiap login."""
+    def _build_fresh_headers(self):
+        """Bangun ulang seluruh session + headers dari nol dengan nilai random baru."""
         self.r = requests.Session()
         self.current_timestamp = int(time.time())
         self.device_id = str(uuid.uuid4())
-        self.android_device = "android-%s" % hashlib.md5(str(time.time()).encode()).hexdigest()[:16]
+        self.android_device = "android-%s" % hashlib.md5((str(uuid.uuid4()) + str(self.current_timestamp)).encode()).hexdigest()[:16]
         self.encpass = ENCPASS_KATANA(self.pw)
+        ua = random_ua()
         zh = hashlib.md5(f"{self.device_id}{self.current_timestamp}".encode()).hexdigest()
         usdid = f"{str(uuid.uuid4())}.{self.current_timestamp}.MEUCIQC1Q5Wpq0xh36yu13b1rex-fRcvH0jOSTsGJtvTqbmqqgIgO58pKRH4tCoM5xUep_-HnGZA9Vhu5dadwQhS7zHLS1A"
-        self.head["X-Zero-Eh"] = zh
-        self.head["X-Meta-Usdid"] = usdid
-        self.head["X-Zero-F-Device-Id"] = str(uuid.uuid4())
-        self.head["App-Scope-Id-Header"] = str(uuid.uuid4())
-        self.head3["X-Zero-Eh"] = zh
-        self.head3["X-Meta-Usdid"] = usdid
-        self.head3["X-Zero-F-Device-Id"] = str(uuid.uuid4())
-        self.head3["App-Scope-Id-Header"] = str(uuid.uuid4())
+        conn_uuid1 = base64.b64encode(os.urandom(12)).decode()
+        conn_uuid2 = base64.b64encode(os.urandom(12)).decode()
+        self.head = {
+            "X-Fb-Request-Analytics-Tags": '{"network_tags":{"product":"350685531728","request_category":"graphql","purpose":"fetch","retry_attempt":"0"},"application_tags":"graphservice"}',
+            "X-Fb-Rmd": "state=URL_ELIGIBLE",
+            "Priority": "u=0",
+            "X-Fb-Device-Group": "2101",
+            "X-Fb-Integrity-Machine-Id": "NM4Bav6UK5w5YiZFtO22bofN",
+            "X-Zero-Eh": zh,
+            "User-Agent": ua,
+            "X-Graphql-Request-Purpose": "fetch",
+            "X-Zero-F-Device-Id": str(uuid.uuid4()),
+            "X-Tigon-Is-Retry": "False",
+            "X-Zero-State": "unknown",
+            "X-Graphql-Client-Library": "graphservice",
+            "X-Fb-Sim-Hni": "51000",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Fb-Net-Hni": "51000",
+            "Authorization": "OAuth 350685531728|62f8ce9f74b12f84c123cc23437a4a32",
+            "X-Meta-Zca": "empty_token",
+            "App-Scope-Id-Header": str(uuid.uuid4()),
+            "X-Fb-Connection-Type": "WIFI",
+            "X-Meta-Usdid": usdid,
+            "X-Fb-Http-Engine": "Tigon/Liger",
+            "X-Fb-Client-Ip": "True",
+            "X-Fb-Server-Cluster": "True",
+            "X-Fb-Conn-Uuid-Client": conn_uuid1,
+        }
+        self.head3 = {
+            "X-Fb-Request-Analytics-Tags": '{"network_tags":{"product":"350685531728","request_category":"graphql","purpose":"fetch","retry_attempt":"0"},"application_tags":"graphservice"}',
+            "X-Fb-Rmd": "state=URL_ELIGIBLE",
+            "Priority": "u=0",
+            "User-Agent": ua,
+            "X-Fb-Friendly-Name": "FbBloksAppRootQuery-com.bloks.www.unified.profile.creation",
+            "X-Zero-F-Device-Id": str(uuid.uuid4()),
+            "X-Fb-Integrity-Machine-Id": "NM4Bav6UK5w5YiZFtO22bofN",
+            "X-Graphql-Request-Purpose": "fetch",
+            "X-Fb-Device-Group": "2101",
+            "X-Tigon-Is-Retry": "False",
+            "X-Graphql-Client-Library": "graphservice",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Zero-Eh": zh,
+            "X-Fb-Net-Hni": "51000",
+            "X-Fb-Sim-Hni": "51000",
+            "Authorization": f"OAuth {self.accesstoken}",
+            "App-Scope-Id-Header": str(uuid.uuid4()),
+            "X-Fb-Connection-Type": "WIFI",
+            "X-Meta-Zca": "empty_token",
+            "X-Meta-Usdid": usdid,
+            "X-Fb-Http-Engine": "Tigon/Liger",
+            "X-Fb-Client-Ip": "True",
+            "X-Fb-Server-Cluster": "True",
+            "X-Fb-Conn-Uuid-Client": conn_uuid2,
+        }
         self.head1 = self.head.copy()
         self.head2 = self.head3.copy()
 
     def login(self):
         """Login ke Facebook. Return True jika access token berhasil didapat."""
-        self._reset_session()
+        self._build_fresh_headers()
         challenge_nonce = base64.b64encode(os.urandom(24)).decode()[:32].replace('+', '/').replace('=', '')
         self.head1.update({"X-Fb-Friendly-Name": "FbBloksActionRootQuery-com.bloks.www.bloks.caa.login.async.send_login_request"})
         params = {
@@ -228,7 +262,7 @@ class CreatePage:
                                 "login_attempt_count": 1,
                                 "machine_id": "NM4Bav6UK5w5YiZFtO22bofN",
                                 "flash_call_permission_status": {"READ_PHONE_STATE": "DENIED", "READ_CALL_LOG": "DENIED", "ANSWER_PHONE_CALLS": "DENIED"},
-                                "accounts_list": [{"uid": self.uid, "credential_type": "abandoned_ar", "metadata": {"contactpoint": self.email}, "token": ""}],
+                                "accounts_list": [{"uid": self.uid, "credential_type": "abandoned_ar", "metadata": {"contactpoint": self.uid}, "token": ""}],
                                 "gms_incoming_call_retriever_eligibility": "not_eligible",
                                 "family_device_id": str(uuid.uuid4()),
                                 "fb_ig_device_id": [],
@@ -238,7 +272,7 @@ class CreatePage:
                                 "event_step": "home_page",
                                 "headers_infra_flow_id": "",
                                 "openid_tokens": {},
-                                "contact_point": self.email
+                                "contact_point": self.uid
                             },
                             "server_params": {
                                 "should_trigger_override_login_2fa_action": 0, "is_from_logged_out": 0,
@@ -286,6 +320,8 @@ class CreatePage:
             print(f"[✓] Login berhasil tanpa 2FA.")
             self.accesstoken = direct_token
             self._update_head2_token()
+            save_token(self.uid, self.accesstoken)
+            print(f"[✓] Token disimpan untuk akun {self.uid}")
             return True
 
         # Perlu 2FA
@@ -363,12 +399,15 @@ class CreatePage:
         }
         resking = self.r.post(self.url, headers=self.head1, data=params)
         restext = resking.text
+        print(restext)
 
         token = extract_access_token(restext)
         if token:
             print(f"[✓] 2FA berhasil. Access token didapat.")
             self.accesstoken = token
             self._update_head2_token()
+            save_token(self.uid, self.accesstoken)
+            print(f"[✓] Token disimpan untuk akun {self.uid}")
             return True
         else:
             print(f"[✗] {self.uid} | Gagal dapat access_token dari response 2FA.")
@@ -587,16 +626,25 @@ if __name__ == "__main__":
             continue
         uid = parts[0].strip()
         pw = parts[1].strip()
-        email = parts[2].strip() if len(parts) >= 3 else ""
         totp_seed = parts[3].split(">")[0].strip() if len(parts) >= 4 else ""
 
         print(f"{'='*60}")
-        print(f"[{i}/{len(lines)}] Login akun: {uid} | {email}")
+        print(f"[{i}/{len(lines)}] Akun: {uid}")
         print(f"{'='*60}")
 
-        bot = CreatePage(uid, pw, email, totp_seed)
-        if bot.login():
-            print(f"[✓] {uid} | Login berhasil, memulai thread...")
+        bot = CreatePage(uid, pw, totp_seed)
+
+        saved = load_token(uid)
+        if saved:
+            print(f"[✓] {uid} | Token tersimpan ditemukan, skip login.")
+            bot.accesstoken = saved
+            bot._update_head2_token()
+            login_ok = True
+        else:
+            login_ok = bot.login()
+
+        if login_ok:
+            print(f"[✓] {uid} | Memulai thread...")
             t = threading.Thread(target=bot.run_loop, name=f"Thread-{uid}", daemon=True)
             t.start()
             threads.append(t)
@@ -604,7 +652,7 @@ if __name__ == "__main__":
             print(f"[✗] {uid} | Login gagal, akun dilewati.")
         print()
         if i < len(lines):
-            print(f"[*] Delay 10 detik sebelum login akun berikutnya...")
+            print(f"[*] Delay 10 detik sebelum akun berikutnya...")
             time.sleep(10)
 
     if not threads:
