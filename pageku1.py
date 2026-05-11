@@ -14,11 +14,11 @@ from Crypto.Cipher import AES, PKCS1_v1_5
 from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 
-COOLDOWN_SECONDS = 7 * 60
+COOLDOWN_SECONDS = 7 * 60  # 7 menit
 
 def clear():
     os.system("clear" if os.name == "posix" else "cls")	
-
+    
 def ENCPASS_KATANA(pw):
     t = int(time.time())
     did = str(uuid.uuid4())
@@ -145,6 +145,7 @@ class CreatePage:
         self.head3["Authorization"] = f"OAuth {self.accesstoken}"
 
     def login(self):
+        """Login ke Facebook. Return True jika access token berhasil didapat."""
         challenge_nonce = base64.b64encode(os.urandom(24)).decode()[:32].replace('+', '/').replace('=', '')
         self.head1.update({"X-Fb-Friendly-Name": "FbBloksActionRootQuery-com.bloks.www.bloks.caa.login.async.send_login_request"})
         params = {
@@ -256,12 +257,16 @@ class CreatePage:
         }
         resking = self.r.post(self.url, headers=self.head1, data=params)
         restext = resking.text
+
+        # Login langsung berhasil tanpa 2FA
         direct_token = extract_access_token(restext)
         if direct_token and "two_fac_redirect" not in restext and "two_step_verification" not in restext and "redirection_to_two_fac" not in restext:
             print(f"[✓] Login berhasil tanpa 2FA.")
             self.accesstoken = direct_token
             self._update_head2_token()
             return True
+
+        # Perlu 2FA
         if "two_fac_redirect" in restext or "two_step_verification" in restext or "redirection_to_two_fac" in restext:
             print("[!] Akun memerlukan verifikasi 2FA...")
             m = re.search(r'two_step_verification_context.{0,300}?([A-Za-z0-9_\-]{80,})', restext)
@@ -280,6 +285,7 @@ class CreatePage:
         return False
 
     def verification2fa(self):
+        """Verifikasi 2FA. Return True jika access token berhasil didapat."""
         self.head1.update({"X-Fb-Friendly-Name": "FbBloksActionRootQuery-com.bloks.www.two_step_verification.verify_code.async"})
         params = {
             "method": "post",
@@ -449,6 +455,7 @@ class CreatePage:
         resking = self.r.post(self.url, headers=self.head2, data=params)
 
     def finalcreate(self):
+        """Buat profil final. Return True jika berhasil, False jika gagal."""
         self.head2.update({"X-Fb-Friendly-Name": "FbBloksActionRootQuery-com.bloks.www.additional.profile.plus.creation.action.category.submit"})
         params = {
             "method": "post", "pretty": "false", "format": "json", "server_timestamps": "true",
@@ -490,9 +497,13 @@ class CreatePage:
         }
         resking = self.r.post(self.url, headers=self.head2, data=params)
         restext = resking.text
+
+        # Cek gagal: ada errors field_exception
         if '"errors"' in restext and ('"code":1675030' in restext or 'field_exception' in restext):
             print(f"[✗] {self.uid} | Akun belum bisa buat profil baru (field_exception).")
             return False
+
+        # Cek berhasil: ekstrak UID profil baru
         new_id = extract_new_profile_id(restext, self.uid)
         if new_id:
             print(f"[✓] Uid berhasil: {new_id}")
@@ -501,6 +512,7 @@ class CreatePage:
         return True
 
     def _run_profile_cycle(self):
+        """Satu siklus buat profil baru. Return True jika berhasil."""
         self.name = random_name()
         print(f"\n[*] {self.uid} | Mulai buat profil: {self.name}")
         self.unifedprofile()
@@ -509,6 +521,7 @@ class CreatePage:
         return self.finalcreate()
 
     def run_loop(self):
+        """Loop tanpa batas: buat profil → cooldown 7 menit → ulangi. Stop jika gagal."""
         cycle = 1
         while True:
             print(f"\n[*] {self.uid} | Siklus ke-{cycle}")
@@ -556,6 +569,9 @@ if __name__ == "__main__":
         else:
             print(f"[✗] {uid} | Login gagal, akun dilewati.")
         print()
+        if i < len(lines):
+            print(f"[*] Delay 10 detik sebelum login akun berikutnya...")
+            time.sleep(10)
 
     if not threads:
         print("[!] Tidak ada akun yang berhasil login.")
