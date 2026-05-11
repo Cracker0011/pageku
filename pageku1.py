@@ -18,7 +18,6 @@ COOLDOWN_SECONDS = 7 * 60  # 7 menit
 
 def clear():
     os.system("clear" if os.name == "posix" else "cls")	
-    
 def ENCPASS_KATANA(pw):
     t = int(time.time())
     did = str(uuid.uuid4())
@@ -144,8 +143,29 @@ class CreatePage:
         self.head2["Authorization"] = f"OAuth {self.accesstoken}"
         self.head3["Authorization"] = f"OAuth {self.accesstoken}"
 
+    def _reset_session(self):
+        """Reset session dan regenerate semua nilai random/timestamp agar fresh tiap login."""
+        self.r = requests.Session()
+        self.current_timestamp = int(time.time())
+        self.device_id = str(uuid.uuid4())
+        self.android_device = "android-%s" % hashlib.md5(str(time.time()).encode()).hexdigest()[:16]
+        self.encpass = ENCPASS_KATANA(self.pw)
+        zh = hashlib.md5(f"{self.device_id}{self.current_timestamp}".encode()).hexdigest()
+        usdid = f"{str(uuid.uuid4())}.{self.current_timestamp}.MEUCIQC1Q5Wpq0xh36yu13b1rex-fRcvH0jOSTsGJtvTqbmqqgIgO58pKRH4tCoM5xUep_-HnGZA9Vhu5dadwQhS7zHLS1A"
+        self.head["X-Zero-Eh"] = zh
+        self.head["X-Meta-Usdid"] = usdid
+        self.head["X-Zero-F-Device-Id"] = str(uuid.uuid4())
+        self.head["App-Scope-Id-Header"] = str(uuid.uuid4())
+        self.head3["X-Zero-Eh"] = zh
+        self.head3["X-Meta-Usdid"] = usdid
+        self.head3["X-Zero-F-Device-Id"] = str(uuid.uuid4())
+        self.head3["App-Scope-Id-Header"] = str(uuid.uuid4())
+        self.head1 = self.head.copy()
+        self.head2 = self.head3.copy()
+
     def login(self):
         """Login ke Facebook. Return True jika access token berhasil didapat."""
+        self._reset_session()
         challenge_nonce = base64.b64encode(os.urandom(24)).decode()[:32].replace('+', '/').replace('=', '')
         self.head1.update({"X-Fb-Friendly-Name": "FbBloksActionRootQuery-com.bloks.www.bloks.caa.login.async.send_login_request"})
         params = {
@@ -497,6 +517,7 @@ class CreatePage:
         }
         resking = self.r.post(self.url, headers=self.head2, data=params)
         restext = resking.text
+        print(restext)
 
         # Cek gagal: ada errors field_exception
         if '"errors"' in restext and ('"code":1675030' in restext or 'field_exception' in restext):
