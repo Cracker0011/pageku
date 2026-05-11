@@ -59,9 +59,10 @@ def extract_new_profile_id(text, original_uid):
 
 
 class CreatePage:
-    def __init__(self, uid, pw, totp_seed):
+    def __init__(self, uid, pw, email, totp_seed):
         self.uid = uid
         self.pw = pw
+        self.email = email if email else uid
         self.totp_seed = totp_seed
         self.r = requests.Session()
         self.current_timestamp = int(time.time())
@@ -227,7 +228,7 @@ class CreatePage:
                                 "login_attempt_count": 1,
                                 "machine_id": "NM4Bav6UK5w5YiZFtO22bofN",
                                 "flash_call_permission_status": {"READ_PHONE_STATE": "DENIED", "READ_CALL_LOG": "DENIED", "ANSWER_PHONE_CALLS": "DENIED"},
-                                "accounts_list": [{"uid": self.uid, "credential_type": "abandoned_ar", "metadata": {"contactpoint": self.uid}, "token": ""}],
+                                "accounts_list": [{"uid": self.uid, "credential_type": "abandoned_ar", "metadata": {"contactpoint": self.email}, "token": ""}],
                                 "gms_incoming_call_retriever_eligibility": "not_eligible",
                                 "family_device_id": str(uuid.uuid4()),
                                 "fb_ig_device_id": [],
@@ -237,7 +238,7 @@ class CreatePage:
                                 "event_step": "home_page",
                                 "headers_infra_flow_id": "",
                                 "openid_tokens": {},
-                                "contact_point": self.uid
+                                "contact_point": self.email
                             },
                             "server_params": {
                                 "should_trigger_override_login_2fa_action": 0, "is_from_logged_out": 0,
@@ -278,6 +279,7 @@ class CreatePage:
         resking = self.r.post(self.url, headers=self.head1, data=params)
         restext = resking.text
         print(restext)
+
         # Login langsung berhasil tanpa 2FA
         direct_token = extract_access_token(restext)
         if direct_token and "two_fac_redirect" not in restext and "two_step_verification" not in restext and "redirection_to_two_fac" not in restext:
@@ -519,7 +521,12 @@ class CreatePage:
         restext = resking.text
         print(restext)
 
-        # Cek gagal: ada errors field_exception
+        # Cek rate limit: terlalu banyak halaman dibuat
+        if "terlalu banyak" in restext or "too many" in restext.lower() or "Silakan coba lagi" in restext:
+            print(f"[⚠] {self.uid} | Rate limit: terlalu banyak halaman. Tunggu 6 menit...")
+            return None
+
+        # Cek gagal permanen: field_exception
         if '"errors"' in restext and ('"code":1675030' in restext or 'field_exception' in restext):
             print(f"[✗] {self.uid} | Akun belum bisa buat profil baru (field_exception).")
             return False
@@ -542,17 +549,22 @@ class CreatePage:
         return self.finalcreate()
 
     def run_loop(self):
-        """Loop tanpa batas: buat profil → cooldown 7 menit → ulangi. Stop jika gagal."""
+        """Loop tanpa batas: buat profil → cooldown → ulangi. Stop hanya jika gagal permanen."""
         cycle = 1
+        RATELIMIT_WAIT = 6 * 60
         while True:
             print(f"\n[*] {self.uid} | Siklus ke-{cycle}")
-            success = self._run_profile_cycle()
-            if not success:
+            result = self._run_profile_cycle()
+            if result is None:
+                print(f"[*] {self.uid} | Cooldown rate limit 6 menit, lanjut coba lagi...")
+                time.sleep(RATELIMIT_WAIT)
+            elif result is False:
                 print(f"[✗] {self.uid} | Akun gagal buat profil, thread dihentikan.")
                 return
-            print(f"[*] {self.uid} | Berhasil. Cooldown {COOLDOWN_SECONDS // 60} menit...")
-            time.sleep(COOLDOWN_SECONDS)
-            cycle += 1
+            else:
+                print(f"[*] {self.uid} | Berhasil. Cooldown {COOLDOWN_SECONDS // 60} menit...")
+                time.sleep(COOLDOWN_SECONDS)
+                cycle += 1
 
 
 if __name__ == "__main__":
@@ -575,13 +587,14 @@ if __name__ == "__main__":
             continue
         uid = parts[0].strip()
         pw = parts[1].strip()
+        email = parts[2].strip() if len(parts) >= 3 else ""
         totp_seed = parts[3].split(">")[0].strip() if len(parts) >= 4 else ""
 
         print(f"{'='*60}")
-        print(f"[{i}/{len(lines)}] Login akun: {uid}")
+        print(f"[{i}/{len(lines)}] Login akun: {uid} | {email}")
         print(f"{'='*60}")
 
-        bot = CreatePage(uid, pw, totp_seed)
+        bot = CreatePage(uid, pw, email, totp_seed)
         if bot.login():
             print(f"[✓] {uid} | Login berhasil, memulai thread...")
             t = threading.Thread(target=bot.run_loop, name=f"Thread-{uid}", daemon=True)
